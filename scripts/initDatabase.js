@@ -68,11 +68,25 @@ db.serialize(() => {
     )
   `);
 
+  // Create users table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL,
+      password TEXT NOT NULL,
+      email TEXT,
+      role TEXT DEFAULT 'admin',
+      date_created DATETIME DEFAULT CURRENT_TIMESTAMP,
+      is_active INTEGER DEFAULT 1
+    )
+  `);
+
   // Create indexes for better performance
   db.run(`CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_vignettes_active ON vignettes(is_active)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_products_active ON products(is_active)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_vignette_products ON vignette_products(vignette_id, product_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)`);
 
   console.log('✅ Database tables created successfully!');
 

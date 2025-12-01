@@ -8,6 +8,12 @@ Master Display helps you organize and present your showroom furniture vignettes.
 
 ## Features
 
+🔐 **Authentication & Security**
+- Secure login system with bcrypt password hashing
+- Session-based authentication
+- Protected admin routes
+- Public display view for showroom screens
+
 ✨ **Product Management**
 - Store detailed product information (name, category, price, dimensions, materials, etc.)
 - Upload multiple images per product
@@ -25,9 +31,11 @@ Master Display helps you organize and present your showroom furniture vignettes.
 - Detailed view with full product information
 - Fullscreen support
 - Responsive design (works on tablets, monitors, TVs)
+- No login required for display view
 
 👨‍💼 **Easy Admin Panel**
 - User-friendly interface
+- Secure authentication required
 - Drag-and-drop image upload
 - Quick product-to-vignette linking
 - Category filtering
@@ -44,14 +52,21 @@ Master Display helps you organize and present your showroom furniture vignettes.
    npm run init-db
    ```
 
-3. **Start the server:**
+3. **Create your first admin user:**
+   ```bash
+   npm run create-user
+   ```
+   Follow the prompts to create your username and password.
+
+4. **Start the server:**
    ```bash
    npm start
    ```
 
-4. **Open in browser:**
-   - Admin Panel: http://localhost:3000/admin.html
-   - Master Display: http://localhost:3000/display.html
+5. **Open in browser:**
+   - Login Page: http://localhost:3000
+   - Admin Panel: http://localhost:3000/admin.html (requires login)
+   - Master Display: http://localhost:3000/display.html (public)
 
 ## Usage
 
@@ -91,7 +106,8 @@ MasterDisplay/
 
 ## Documentation
 
-See [SETUP.md](SETUP.md) for detailed installation and usage instructions.
+- [SETUP.md](SETUP.md) - Detailed installation and usage instructions
+- [DEPLOYMENT.md](DEPLOYMENT.md) - Ubuntu server deployment guide with NGINX and PM2
 
 ## Requirements
 

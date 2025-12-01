@@ -4,14 +4,41 @@ const multer = require('multer');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const session = require('express-session');
+const bcrypt = require('bcrypt');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Session configuration
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'master-display-secret-change-in-production',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
+}));
+
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
 app.use(express.json());
-app.use(express.static('public'));
+
+// Serve login page at root
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'login.html'));
+});
+
+// Public routes (no auth required)
+app.use('/login.html', express.static(path.join(__dirname, 'public', 'login.html')));
+app.use('/display.html', express.static(path.join(__dirname, 'public', 'display.html')));
+app.use('/css', express.static(path.join(__dirname, 'public', 'css')));
+app.use('/js', express.static(path.join(__dirname, 'public', 'js')));
 app.use('/uploads', express.static('uploads'));
 
 // Database connection
@@ -52,6 +79,101 @@ const upload = multer({
     } else {
       cb(new Error('Only image files are allowed!'));
     }
+  }
+});
+
+// ============================================
+// AUTHENTICATION MIDDLEWARE
+// ============================================
+
+// Check if user is authenticated
+function requireAuth(req, res, next) {
+  if (req.session && req.session.userId) {
+    return next();
+  } else {
+    return res.status(401).json({ error: 'Unauthorized. Please login.' });
+  }
+}
+
+// Protect admin.html
+app.get('/admin.html', (req, res) => {
+  if (req.session && req.session.userId) {
+    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+  } else {
+    res.redirect('/login.html');
+  }
+});
+
+// ============================================
+// AUTHENTICATION ROUTES
+// ============================================
+
+// Login
+app.post('/api/auth/login', async (req, res) => {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password are required' });
+  }
+
+  db.get(
+    'SELECT * FROM users WHERE username = ? AND is_active = 1',
+    [username],
+    async (err, user) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+
+      if (!user) {
+        return res.status(401).json({ error: 'Invalid username or password' });
+      }
+
+      try {
+        const validPassword = await bcrypt.compare(password, user.password);
+
+        if (!validPassword) {
+          return res.status(401).json({ error: 'Invalid username or password' });
+        }
+
+        // Set session
+        req.session.userId = user.id;
+        req.session.username = user.username;
+
+        res.json({
+          message: 'Login successful',
+          user: {
+            id: user.id,
+            username: user.username,
+            email: user.email
+          }
+        });
+      } catch (error) {
+        console.error('Password comparison error:', error);
+        res.status(500).json({ error: 'Authentication error' });
+      }
+    }
+  );
+});
+
+// Logout
+app.post('/api/auth/logout', (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      return res.status(500).json({ error: 'Logout failed' });
+    }
+    res.json({ message: 'Logout successful' });
+  });
+});
+
+// Check auth status
+app.get('/api/auth/status', (req, res) => {
+  if (req.session && req.session.userId) {
+    res.json({
+      authenticated: true,
+      username: req.session.username
+    });
+  } else {
+    res.json({ authenticated: false });
   }
 });
 
@@ -133,7 +255,7 @@ app.get('/api/vignettes/:id', (req, res) => {
 });
 
 // Create new vignette
-app.post('/api/vignettes', (req, res) => {
+app.post('/api/vignettes', requireAuth, (req, res) => {
   const { name, description, location, theme } = req.body;
 
   const query = `
@@ -151,7 +273,7 @@ app.post('/api/vignettes', (req, res) => {
 });
 
 // Update vignette
-app.put('/api/vignettes/:id', (req, res) => {
+app.put('/api/vignettes/:id', requireAuth, (req, res) => {
   const { name, description, location, theme } = req.body;
   const vignetteId = req.params.id;
 
@@ -171,7 +293,7 @@ app.put('/api/vignettes/:id', (req, res) => {
 });
 
 // Delete vignette (soft delete)
-app.delete('/api/vignettes/:id', (req, res) => {
+app.delete('/api/vignettes/:id', requireAuth, (req, res) => {
   const vignetteId = req.params.id;
 
   const query = `UPDATE vignettes SET is_active = 0 WHERE id = ?`;
@@ -245,7 +367,7 @@ app.get('/api/products/:id', (req, res) => {
 });
 
 // Create new product
-app.post('/api/products', (req, res) => {
+app.post('/api/products', requireAuth, (req, res) => {
   const { name, category, description, manufacturer, model_number, sku, price, dimensions, material, color } = req.body;
 
   const query = `
@@ -263,7 +385,7 @@ app.post('/api/products', (req, res) => {
 });
 
 // Update product
-app.put('/api/products/:id', (req, res) => {
+app.put('/api/products/:id', requireAuth, (req, res) => {
   const { name, category, description, manufacturer, model_number, sku, price, dimensions, material, color } = req.body;
   const productId = req.params.id;
 
@@ -284,7 +406,7 @@ app.put('/api/products/:id', (req, res) => {
 });
 
 // Delete product (soft delete)
-app.delete('/api/products/:id', (req, res) => {
+app.delete('/api/products/:id', requireAuth, (req, res) => {
   const productId = req.params.id;
 
   const query = `UPDATE products SET is_active = 0 WHERE id = ?`;
@@ -317,7 +439,7 @@ app.get('/api/categories', (req, res) => {
 // ============================================
 
 // Add product to vignette
-app.post('/api/vignettes/:vignetteId/products/:productId', (req, res) => {
+app.post('/api/vignettes/:vignetteId/products/:productId', requireAuth, (req, res) => {
   const { vignetteId, productId } = req.params;
   const { position, notes } = req.body;
 
@@ -336,7 +458,7 @@ app.post('/api/vignettes/:vignetteId/products/:productId', (req, res) => {
 });
 
 // Remove product from vignette
-app.delete('/api/vignettes/:vignetteId/products/:productId', (req, res) => {
+app.delete('/api/vignettes/:vignetteId/products/:productId', requireAuth, (req, res) => {
   const { vignetteId, productId } = req.params;
 
   const query = `DELETE FROM vignette_products WHERE vignette_id = ? AND product_id = ?`;
@@ -355,7 +477,7 @@ app.delete('/api/vignettes/:vignetteId/products/:productId', (req, res) => {
 // ============================================
 
 // Upload image
-app.post('/api/images/upload', upload.single('image'), (req, res) => {
+app.post('/api/images/upload', requireAuth, upload.single('image'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });
   }
@@ -382,7 +504,7 @@ app.post('/api/images/upload', upload.single('image'), (req, res) => {
 });
 
 // Delete image
-app.delete('/api/images/:id', (req, res) => {
+app.delete('/api/images/:id', requireAuth, (req, res) => {
   const imageId = req.params.id;
 
   // First get the image path to delete the file

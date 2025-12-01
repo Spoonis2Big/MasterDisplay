@@ -27,3 +27,7 @@ Thumbs.db
 # Environment
 .env
 .env.local
+.env.production
+
+# PM2
+.pm2
