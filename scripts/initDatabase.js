@@ -19,12 +19,26 @@ db.serialize(() => {
     )
   `);
 
+  // Create categories table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      code TEXT NOT NULL,
+      name TEXT NOT NULL,
+      parent_id INTEGER,
+      display_order INTEGER DEFAULT 0,
+      is_active INTEGER DEFAULT 1,
+      FOREIGN KEY (parent_id) REFERENCES categories(id) ON DELETE CASCADE
+    )
+  `);
+
   // Create products table
   db.run(`
     CREATE TABLE IF NOT EXISTS products (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
-      category TEXT NOT NULL,
+      category TEXT,
+      category_id INTEGER,
       description TEXT,
       manufacturer TEXT,
       model_number TEXT,
@@ -35,7 +49,8 @@ db.serialize(() => {
       color TEXT,
       date_added DATETIME DEFAULT CURRENT_TIMESTAMP,
       date_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
-      is_active INTEGER DEFAULT 1
+      is_active INTEGER DEFAULT 1,
+      FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
     )
   `);
 
@@ -83,12 +98,102 @@ db.serialize(() => {
 
   // Create indexes for better performance
   db.run(`CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_products_category_id ON products(category_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories(parent_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_vignettes_active ON vignettes(is_active)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_products_active ON products(is_active)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_vignette_products ON vignette_products(vignette_id, product_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)`);
 
   console.log('✅ Database tables created successfully!');
+
+  // Insert categories
+  const mainCategories = [
+    { code: '220', name: 'BEDROOM', order: 0 },
+    { code: '250', name: 'DINING ROOM', order: 1 },
+    { code: '360', name: 'OCCASIONAL TABLES', order: 2 },
+    { code: '420', name: 'ACCESSORIES', order: 3 },
+    { code: '540', name: 'UPHOLSTERY', order: 4 },
+    { code: '550', name: 'LEATHER', order: 5 },
+    { code: '570', name: 'RECLINING UPHOLSTERY', order: 6 },
+    { code: '590', name: 'STATIONARY CHAIRS', order: 7 },
+    { code: '620', name: 'FABRIC RECLINERS', order: 8 }
+  ];
+
+  const subcategories = {
+    '220': [
+      { code: '220', name: 'MASTER BEDROOM' },
+      { code: '221', name: 'YOUTH BEDROOM' },
+      { code: '222', name: 'DAYBEDS' },
+      { code: '223', name: 'BUNKBEDS' },
+      { code: '224', name: 'METAL BEDS' },
+      { code: '225', name: 'WOOD HEADBOARDS/NON CASEGOODS' }
+    ],
+    '250': [
+      { code: '250', name: 'CASUAL DINING' },
+      { code: '251', name: 'FORMAL DINING' },
+      { code: '252', name: 'DINING UNIQUE PIECE' },
+      { code: '253', name: 'STOOLS' }
+    ],
+    '420': [
+      { code: '420', name: 'LAMPS' },
+      { code: '430', name: 'WALL ITEMS' },
+      { code: '440', name: 'PLANTS AND TREES' },
+      { code: '450', name: 'TEXTILES AND SEASONAL ITEMS' },
+      { code: '460', name: 'SMALL - TABLE TOPS' },
+      { code: '470', name: 'LARGE - FLOOR STANDING' },
+      { code: '480', name: 'AREA RUGS' }
+    ],
+    '540': [
+      { code: '540', name: 'STATIONARY UPHOLSTERY' },
+      { code: '541', name: 'LEATHER/FABRIC COMBO' },
+      { code: '543', name: 'FABRIC & MISC FOR STATIONARY GROUP' },
+      { code: '544', name: 'SECTIONALS' }
+    ],
+    '550': [
+      { code: '550', name: 'LEATHER' },
+      { code: '553', name: 'LEATHER / VINYL' }
+    ],
+    '570': [
+      { code: '570', name: 'RECLINING UPHOLSTERY' },
+      { code: '571', name: 'RECLINING LEATHER' },
+      { code: '579', name: 'RECLINING SECTIONALS' },
+      { code: '580', name: 'STATIONARY FOR MOTION UPHOLSTERY' }
+    ],
+    '590': [
+      { code: '590', name: 'STATIONARY CHAIRS' },
+      { code: '593', name: 'SWIVEL ROCKER' },
+      { code: '596', name: 'LEATHER ACCENT CHAIRS' }
+    ],
+    '620': [
+      { code: '620', name: 'FABRIC RECLINERS' },
+      { code: '622', name: 'LEATHER RECLINERS' },
+      { code: '623', name: 'LIFT CHAIRS' }
+    ]
+  };
+
+  // Insert main categories
+  const insertMain = db.prepare(`INSERT OR IGNORE INTO categories (code, name, parent_id, display_order) VALUES (?, ?, NULL, ?)`);
+  mainCategories.forEach(cat => {
+    insertMain.run(cat.code, cat.name, cat.order);
+  });
+  insertMain.finalize(() => {
+    console.log('✅ Main categories added!');
+
+    // Insert subcategories
+    Object.keys(subcategories).forEach(parentCode => {
+      db.get('SELECT id FROM categories WHERE code = ? AND parent_id IS NULL', [parentCode], (err, parent) => {
+        if (!err && parent) {
+          const insertSub = db.prepare(`INSERT OR IGNORE INTO categories (code, name, parent_id, display_order) VALUES (?, ?, ?, ?)`);
+          subcategories[parentCode].forEach((subcat, index) => {
+            insertSub.run(subcat.code, subcat.name, parent.id, index);
+          });
+          insertSub.finalize();
+        }
+      });
+    });
+    console.log('✅ Subcategories added!');
+  });
 
   // Insert sample data
   db.run(`

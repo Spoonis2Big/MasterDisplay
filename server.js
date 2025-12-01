@@ -368,41 +368,83 @@ app.get('/api/products/:id', (req, res) => {
 
 // Create new product
 app.post('/api/products', requireAuth, (req, res) => {
-  const { name, category, description, manufacturer, model_number, sku, price, dimensions, material, color } = req.body;
+  const { name, category_id, description, manufacturer, model_number, sku, price, dimensions, material, color } = req.body;
 
-  const query = `
-    INSERT INTO products (name, category, description, manufacturer, model_number, sku, price, dimensions, material, color)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `;
+  // Get category name from category_id for backward compatibility
+  if (category_id) {
+    db.get('SELECT name FROM categories WHERE id = ?', [category_id], (err, cat) => {
+      const categoryName = cat ? cat.name : null;
 
-  db.run(query, [name, category, description, manufacturer, model_number, sku, price, dimensions, material, color], function(err) {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    res.json({ id: this.lastID, message: 'Product created successfully' });
-  });
+      const query = `
+        INSERT INTO products (name, category, category_id, description, manufacturer, model_number, sku, price, dimensions, material, color)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `;
+
+      db.run(query, [name, categoryName, category_id, description, manufacturer, model_number, sku, price, dimensions, material, color], function(err) {
+        if (err) {
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        res.json({ id: this.lastID, message: 'Product created successfully' });
+      });
+    });
+  } else {
+    const query = `
+      INSERT INTO products (name, category, category_id, description, manufacturer, model_number, sku, price, dimensions, material, color)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    db.run(query, [name, null, null, description, manufacturer, model_number, sku, price, dimensions, material, color], function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.json({ id: this.lastID, message: 'Product created successfully' });
+    });
+  }
 });
 
 // Update product
 app.put('/api/products/:id', requireAuth, (req, res) => {
-  const { name, category, description, manufacturer, model_number, sku, price, dimensions, material, color } = req.body;
+  const { name, category_id, description, manufacturer, model_number, sku, price, dimensions, material, color } = req.body;
   const productId = req.params.id;
 
-  const query = `
-    UPDATE products
-    SET name = ?, category = ?, description = ?, manufacturer = ?, model_number = ?,
-        sku = ?, price = ?, dimensions = ?, material = ?, color = ?, date_updated = CURRENT_TIMESTAMP
-    WHERE id = ?
-  `;
+  // Get category name from category_id for backward compatibility
+  if (category_id) {
+    db.get('SELECT name FROM categories WHERE id = ?', [category_id], (err, cat) => {
+      const categoryName = cat ? cat.name : null;
 
-  db.run(query, [name, category, description, manufacturer, model_number, sku, price, dimensions, material, color, productId], function(err) {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    res.json({ message: 'Product updated successfully', changes: this.changes });
-  });
+      const query = `
+        UPDATE products
+        SET name = ?, category = ?, category_id = ?, description = ?, manufacturer = ?, model_number = ?,
+            sku = ?, price = ?, dimensions = ?, material = ?, color = ?, date_updated = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `;
+
+      db.run(query, [name, categoryName, category_id, description, manufacturer, model_number, sku, price, dimensions, material, color, productId], function(err) {
+        if (err) {
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        res.json({ message: 'Product updated successfully', changes: this.changes });
+      });
+    });
+  } else {
+    const query = `
+      UPDATE products
+      SET name = ?, category = ?, category_id = ?, description = ?, manufacturer = ?, model_number = ?,
+          sku = ?, price = ?, dimensions = ?, material = ?, color = ?, date_updated = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `;
+
+    db.run(query, [name, null, null, description, manufacturer, model_number, sku, price, dimensions, material, color, productId], function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.json({ message: 'Product updated successfully', changes: this.changes });
+    });
+  }
 });
 
 // Delete product (soft delete)
@@ -420,17 +462,45 @@ app.delete('/api/products/:id', requireAuth, (req, res) => {
   });
 });
 
-// Get product categories
+// Get product categories (hierarchical)
 app.get('/api/categories', (req, res) => {
-  const query = `SELECT DISTINCT category FROM products WHERE is_active = 1 ORDER BY category`;
+  // Get all categories
+  const query = `
+    SELECT id, code, name, parent_id, display_order
+    FROM categories
+    WHERE is_active = 1
+    ORDER BY display_order, name
+  `;
 
   db.all(query, [], (err, rows) => {
     if (err) {
       res.status(500).json({ error: err.message });
       return;
     }
-    const categories = rows.map(row => row.category);
-    res.json({ categories: categories });
+
+    // Organize into hierarchy
+    const mainCategories = rows.filter(cat => cat.parent_id === null);
+    const subcategories = rows.filter(cat => cat.parent_id !== null);
+
+    const hierarchy = mainCategories.map(main => ({
+      ...main,
+      subcategories: subcategories.filter(sub => sub.parent_id === main.id)
+    }));
+
+    res.json({ categories: hierarchy });
+  });
+});
+
+// Get flat list of categories (for backward compatibility)
+app.get('/api/categories/flat', (req, res) => {
+  const query = `SELECT id, code, name, parent_id FROM categories WHERE is_active = 1 ORDER BY display_order, name`;
+
+  db.all(query, [], (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json({ categories: rows });
   });
 });
 

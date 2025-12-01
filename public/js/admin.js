@@ -265,14 +265,41 @@ async function loadCategories() {
     const response = await fetch(`${API_BASE}/categories`);
     const data = await response.json();
 
+    // Update product category dropdown (hierarchical with optgroups)
+    const productCategory = document.getElementById('product-category');
+    if (productCategory) {
+      const currentValue = productCategory.value;
+      let optionsHTML = '<option value="">Select Category</option>';
+
+      data.categories.forEach(mainCat => {
+        if (mainCat.subcategories && mainCat.subcategories.length > 0) {
+          optionsHTML += `<optgroup label="${mainCat.code} - ${mainCat.name}">`;
+          mainCat.subcategories.forEach(subCat => {
+            optionsHTML += `<option value="${subCat.id}">${subCat.code} - ${subCat.name}</option>`;
+          });
+          optionsHTML += '</optgroup>';
+        } else {
+          optionsHTML += `<option value="${mainCat.id}">${mainCat.code} - ${mainCat.name}</option>`;
+        }
+      });
+
+      productCategory.innerHTML = optionsHTML;
+      if (currentValue) productCategory.value = currentValue;
+    }
+
+    // Update category filter dropdown (flat list of main categories)
     const categoryFilter = document.getElementById('category-filter');
-    const currentValue = categoryFilter.value;
+    if (categoryFilter) {
+      const currentValue = categoryFilter.value;
+      let filterHTML = '<option value="">All Categories</option>';
 
-    const existingOptions = categoryFilter.innerHTML;
-    categoryFilter.innerHTML = '<option value="">All Categories</option>' +
-      data.categories.map(cat => `<option value="${cat}">${cat}</option>`).join('');
+      data.categories.forEach(mainCat => {
+        filterHTML += `<option value="${mainCat.id}">${mainCat.code} - ${mainCat.name}</option>`;
+      });
 
-    categoryFilter.value = currentValue;
+      categoryFilter.innerHTML = filterHTML;
+      if (currentValue) categoryFilter.value = currentValue;
+    }
   } catch (error) {
     console.error('Error loading categories:', error);
   }
@@ -297,7 +324,7 @@ async function editProduct(id) {
     document.getElementById('product-modal-title').textContent = 'Edit Product';
     document.getElementById('product-id').value = data.product.id;
     document.getElementById('product-name').value = data.product.name;
-    document.getElementById('product-category').value = data.product.category;
+    document.getElementById('product-category').value = data.product.category_id || '';
     document.getElementById('product-description').value = data.product.description || '';
     document.getElementById('product-manufacturer').value = data.product.manufacturer || '';
     document.getElementById('product-model-number').value = data.product.model_number || '';
@@ -424,9 +451,11 @@ function setupForms() {
     e.preventDefault();
 
     const id = document.getElementById('product-id').value;
+    const categoryId = document.getElementById('product-category').value;
+
     const formData = {
       name: document.getElementById('product-name').value,
-      category: document.getElementById('product-category').value,
+      category_id: categoryId ? parseInt(categoryId) : null,
       description: document.getElementById('product-description').value,
       manufacturer: document.getElementById('product-manufacturer').value,
       model_number: document.getElementById('product-model-number').value,
